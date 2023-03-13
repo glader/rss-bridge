@@ -1,42 +1,51 @@
 <?php
-class RainbowSixSiegeBridge extends BridgeAbstract {
 
-	const MAINTAINER = 'corenting';
-	const NAME = 'Rainbow Six Siege News';
-	const URI = 'https://www.ubisoft.com/en-us/game/rainbow-six/siege/news-updates';
-	const CACHE_TIMEOUT = 7200; // 2h
-	const DESCRIPTION = 'Latest news about Rainbow Six Siege';
+class RainbowSixSiegeBridge extends BridgeAbstract
+{
+    const MAINTAINER = 'corenting';
+    const NAME = 'Rainbow Six Siege News';
+    const URI = 'https://www.ubisoft.com/en-us/game/rainbow-six/siege/news-updates';
+    const CACHE_TIMEOUT = 7200; // 2h
+    const DESCRIPTION = 'Latest news about Rainbow Six Siege';
 
-	public function getIcon() {
-		return 'https://static-dm.akamaized.net/siege/prod/favicon-144x144.png';
-	}
+    // API key to call Ubisoft API, extracted from the React frontend
+    const NIMBUS_API_KEY = '3u0FfSBUaTSew-2NVfAOSYWevVQHWtY9q3VM8Xx9Lto';
 
-	public function collectData(){
-		$dlUrl = 'https://www.ubisoft.com/api/updates/items?locale=en-us&categoriesFilter=all';
-		$dlUrl = $dlUrl . '&limit=6&mediaFilter=news&skip=0&startIndex=undefined&tags=BR-rainbow-six%20GA-siege';
-		$jsonString = getContents($dlUrl) or returnServerError('Error while downloading the website content');
+    public function getIcon()
+    {
+        return 'https://static-dm.akamaized.net/siege/prod/favicon.ico';
+    }
 
-		$json = json_decode($jsonString, true);
-		$json = $json['items'];
+    public function collectData()
+    {
+        $dlUrl = 'https://nimbus.ubisoft.com/api/v1/items?categoriesFilter=all';
+        $dlUrl = $dlUrl . '&limit=6&mediaFilter=all&skip=0&startIndex=0&tags=BR-rainbow-six%20GA-siege';
+        $dlUrl = $dlUrl . '&locale=en-us&fallbackLocale=en-us&environment=master';
+        $jsonString = getContents($dlUrl, [
+            'Authorization: ' . self::NIMBUS_API_KEY
+        ]);
 
-		// Start at index 2 to remove highlighted articles
-		for($i = 0; $i < count($json); $i++) {
-			$jsonItem = $json[$i];
+        $json = json_decode($jsonString, true);
+        $json = $json['items'];
 
-			$uri = 'https://www.ubisoft.com/en-us/game/rainbow-six/siege';
-			$uri = $uri . $jsonItem['button']['buttonUrl'];
+        // Start at index 2 to remove highlighted articles
+        for ($i = 0; $i < count($json); $i++) {
+            $jsonItem = $json[$i];
 
-			$thumbnail = '<img src="' . $jsonItem['thumbnail']['url'] . '" alt="Thumbnail">';
-			$content = $thumbnail . '<br />' . markdownToHtml($jsonItem['content']);
+            $uri = 'https://www.ubisoft.com/en-us/game/rainbow-six/siege';
+            $uri = $uri . $jsonItem['button']['buttonUrl'];
 
-			$item = array();
-			$item['uri'] = $uri;
-			$item['id'] = $jsonItem['id'];
-			$item['title'] = $jsonItem['title'];
-			$item['content'] = $content;
-			$item['timestamp'] = strtotime($jsonItem['date']);
+            $thumbnail = '<img src="' . $jsonItem['thumbnail']['url'] . '" alt="Thumbnail">';
+            $content = $thumbnail . '<br />' . markdownToHtml($jsonItem['content']);
 
-			$this->items[] = $item;
-		}
-	}
+            $item = [];
+            $item['uri'] = $uri;
+            $item['id'] = $jsonItem['id'];
+            $item['title'] = $jsonItem['title'];
+            $item['content'] = $content;
+            $item['timestamp'] = strtotime($jsonItem['date']);
+
+            $this->items[] = $item;
+        }
+    }
 }

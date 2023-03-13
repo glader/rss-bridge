@@ -1,164 +1,254 @@
 <?php
-class SoundCloudBridge extends BridgeAbstract {
 
-	const MAINTAINER = 'kranack, Roliga';
-	const NAME = 'Soundcloud Bridge';
-	const URI = 'https://soundcloud.com/';
-	const CACHE_TIMEOUT = 600; // 10min
-	const DESCRIPTION = 'Returns 10 newest music from user profile';
+class SoundCloudBridge extends BridgeAbstract
+{
+    const MAINTAINER = 'kranack, Roliga';
+    const NAME = 'Soundcloud Bridge';
+    const URI = 'https://soundcloud.com/';
+    const CACHE_TIMEOUT = 600; // 10min
+    const DESCRIPTION = 'Returns 10 newest music from user profile';
 
-	const PARAMETERS = array( array(
-		'u' => array(
-			'name' => 'username',
-			'required' => true
-		),
-		't' => array(
-			'name' => 'type',
-			'type' => 'list',
-			'defaultValue' => 'tracks',
-			'values' => array(
-				'Tracks' => 'tracks',
-				'Playlists' => 'playlists'
-			)
-		)
-	));
+    const PARAMETERS = [[
+        'u' => [
+            'name' => 'username',
+            'exampleValue' => 'thekidlaroi',
+            'required' => true
+        ],
+        't' => [
+            'name' => 'Content',
+            'type' => 'list',
+            'defaultValue' => 'tracks',
+            'values' => [
+                'All (except likes)' => 'all',
+                'Tracks' => 'tracks',
+                'Albums' => 'albums',
+                'Playlists' => 'playlists',
+                'Reposts' => 'reposts',
+                'Likes' => 'likes'
+            ]
+        ]
+    ]];
 
-	private $feedTitle = null;
-	private $feedIcon = null;
-	private $clientIDCache = null;
+    private $apiUrl = 'https://api-v2.soundcloud.com/';
+    // Without url=http, player URL returns a 404
+    private $playerUrl = 'https://w.soundcloud.com/player/?url=http';
+    private $widgetUrl = 'https://widget.sndcdn.com/';
 
-	private $clientIdRegex = '/client_id.*?"(.+?)"/';
-	private $widgetRegex = '/widget-.+?\.js/';
+    private $feedTitle = null;
+    private $feedIcon = null;
+    private $clientIDCache = null;
 
-	public function collectData(){
-		$res = $this->apiGet('resolve', array(
-			'url' => 'https://soundcloud.com/' . $this->getInput('u')
-		)) or returnServerError('No results for this query');
+    private $clientIdRegex = '/client_id.*?"(.+?)"/';
+    private $widgetRegex = '/widget-.+?\.js/';
 
-		$this->feedTitle = $res->username;
-		$this->feedIcon = $res->avatar_url;
+    public function collectData()
+    {
+        $res = $this->getUser($this->getInput('u'));
 
-		$tracks = $this->apiGet(
-			'users/' . urlencode($res->id) . '/' . $this->getInput('t'),
-			array('limit' => 31)
-		) or returnServerError('No results for this user/playlist');
+        $this->feedTitle = $res->username;
+        $this->feedIcon = $res->avatar_url;
 
-		foreach ($tracks->collection as $index => $track) {
-			$item = array();
-			$item['author'] = $track->user->username;
-			$item['title'] = $track->user->username . ' - ' . $track->title;
-			$item['timestamp'] = strtotime($track->created_at);
-			$item['content'] = nl2br($track->description);
-			$item['enclosures'][] = $track->artwork_url;
+        $apiItems = $this->getUserItems($res->id, $this->getInput('t'))
+            or returnServerError('No results for ' . $this->getInput('t'));
 
-			$item['id'] = self::URI
-				. urlencode($this->getInput('u'))
-				. '/'
-				. urlencode($track->permalink);
-			$item['uri'] = self::URI
-				. urlencode($this->getInput('u'))
-				. '/'
-				. urlencode($track->permalink);
-			$this->items[] = $item;
+        $hasTrackObject = ['all', 'reposts', 'likes'];
 
-			if (count($this->items) >= 10) {
-				break;
-			}
-		}
-	}
+        foreach ($apiItems->collection as $index => $apiItem) {
+            if (in_array($this->getInput('t'), $hasTrackObject) === true) {
+                $apiItem = $apiItem->playlist ?? $apiItem->track;
+            }
 
-	public function getIcon(){
-		if ($this->feedIcon) {
-			return $this->feedIcon;
-		}
+            $item = [];
+            $item['author'] = $apiItem->user->username;
+            $item['title'] = $apiItem->user->username . ' - ' . $apiItem->title;
+            $item['timestamp'] = strtotime($apiItem->created_at);
 
-		return parent::getIcon();
-	}
+            $description = nl2br($apiItem->description);
 
-	public function getURI(){
-		return 'https://soundcloud.com/' . $this->getInput('u');
-	}
+            $item['content'] = <<<HTML
+				<p>{$description}</p>
+HTML;
 
-	public function getName(){
-		if($this->feedTitle) {
-			return $this->feedTitle . ' - ' . self::NAME;
-		}
+            if (isset($apiItem->tracks) && $apiItem->track_count > 0) {
+                $list = $this->getTrackList($apiItem->tracks);
 
-		return parent::getName();
-	}
+                $item['content'] .= <<<HTML
+					<p><strong>Tracks ({$apiItem->track_count})</strong></p>
+					{$list}
+HTML;
+            }
 
-	private function initClientIDCache(){
-		if($this->clientIDCache !== null)
-			return;
+            $item['enclosures'][] = $apiItem->artwork_url;
+            $item['id'] = $apiItem->permalink_url;
+            $item['uri'] = $apiItem->permalink_url;
+            $this->items[] = $item;
 
-		$cacheFac = new CacheFactory();
-		$cacheFac->setWorkingDir(PATH_LIB_CACHES);
-		$this->clientIDCache = $cacheFac->create(Configuration::getConfig('cache', 'type'));
-		$this->clientIDCache->setScope(get_called_class());
-		$this->clientIDCache->setKey(array('client_id'));
-	}
+            if (count($this->items) >= 10) {
+                break;
+            }
+        }
+    }
 
-	private function getClientID(){
-		$this->initClientIDCache();
+    public function getIcon()
+    {
+        if ($this->feedIcon) {
+            return $this->feedIcon;
+        }
 
-		$clientID = $this->clientIDCache->loadData();
+        return parent::getIcon();
+    }
 
-		if($clientID == null) {
-			return $this->refreshClientID();
-		} else {
-			return $clientID;
-		}
-	}
+    public function getURI()
+    {
+        if ($this->getInput('u')) {
+            return self::URI . $this->getInput('u') . '/' . $this->getInput('t');
+        }
 
-	private function refreshClientID(){
-		$this->initClientIDCache();
+        return parent::getURI();
+    }
 
-		// Without url=http, this returns a 404
-		$playerHTML = getContents('https://w.soundcloud.com/player/?url=http')
-			or returnServerError('Unable to get player page.');
+    public function getName()
+    {
+        if ($this->feedTitle) {
+            return $this->feedTitle . ' - ' . ucfirst($this->getInput('t')) . ' - ' . self::NAME;
+        }
 
-		// Extract widget JS filenames from player page
-		if(preg_match_all($this->widgetRegex, $playerHTML, $matches) == false)
-			returnServerError('Unable to find widget JS URL.');
+        return parent::getName();
+    }
 
-		$clientID = '';
+    private function initClientIDCache()
+    {
+        if ($this->clientIDCache !== null) {
+            return;
+        }
 
-		// Loop widget js files and extract client ID
-		foreach ($matches[0] as $widgetFile) {
-			$widgetURL = 'https://widget.sndcdn.com/' . $widgetFile;
+        $cacheFactory = new CacheFactory();
 
-			$widgetJS = getContents($widgetURL)
-				or returnServerError('Unable to get widget JS page.');
+        $this->clientIDCache = $cacheFactory->create();
+        $this->clientIDCache->setScope('SoundCloudBridge');
+        $this->clientIDCache->setKey(['client_id']);
+    }
 
-			if(preg_match($this->clientIdRegex, $widgetJS, $matches)) {
-				$clientID = $matches[1];
-				$this->clientIDCache->saveData($clientID);
+    private function getClientID()
+    {
+        $this->initClientIDCache();
 
-				return $clientID;
-			}
-		}
+        $clientID = $this->clientIDCache->loadData();
 
-		if (empty($clientID)) {
-			returnServerError('Unable to find client ID.');
-		}
-	}
+        if ($clientID == null) {
+            return $this->refreshClientID();
+        } else {
+            return $clientID;
+        }
+    }
 
-	private function buildAPIURL($endpoint, $parameters){
-		return 'https://api-v2.soundcloud.com/'
-			. $endpoint
-			. '?'
-			. http_build_query($parameters);
-	}
+    private function refreshClientID()
+    {
+        $this->initClientIDCache();
 
-	private function apiGet($endpoint, $parameters = array()) {
-		$parameters['client_id'] = $this->getClientID();
+        $playerHTML = getContents($this->playerUrl);
 
-		try {
-			return json_decode(getContents($this->buildAPIURL($endpoint, $parameters)));
-		} catch (Exception $e) {
-			// Retry once with refreshed client ID
-			$parameters['client_id'] = $this->refreshClientID();
-			return json_decode(getContents($this->buildAPIURL($endpoint, $parameters)));
-		}
-	}
+        // Extract widget JS filenames from player page
+        if (preg_match_all($this->widgetRegex, $playerHTML, $matches) == false) {
+            returnServerError('Unable to find widget JS URL.');
+        }
+
+        $clientID = '';
+
+        // Loop widget js files and extract client ID
+        foreach ($matches[0] as $widgetFile) {
+            $widgetURL = $this->widgetUrl . $widgetFile;
+
+            $widgetJS = getContents($widgetURL);
+
+            if (preg_match($this->clientIdRegex, $widgetJS, $matches)) {
+                $clientID = $matches[1];
+                $this->clientIDCache->saveData($clientID);
+
+                return $clientID;
+            }
+        }
+
+        if (empty($clientID)) {
+            returnServerError('Unable to find client ID.');
+        }
+    }
+
+    private function buildApiUrl($endpoint, $parameters)
+    {
+        return $this->apiUrl
+            . $endpoint
+            . '?'
+            . http_build_query($parameters);
+    }
+
+    private function getUser($username)
+    {
+        $parameters = ['url' => self::URI . $username];
+
+        return $this->getApi('resolve', $parameters);
+    }
+
+    private function getUserItems($userId, $type)
+    {
+        $parameters = ['limit' => 10];
+        $endpoint = 'users/' . $userId . '/' . $type;
+
+        if ($type === 'playlists') {
+            $endpoint = 'users/' . $userId . '/playlists_without_albums';
+        }
+
+        if ($type === 'all') {
+            $endpoint = 'stream/users/' . $userId;
+        }
+
+        if ($type === 'reposts') {
+            $endpoint = 'stream/users/' . $userId . '/' . $type;
+        }
+
+        return $this->getApi($endpoint, $parameters);
+    }
+
+    private function getApi($endpoint, $parameters)
+    {
+        $parameters['client_id'] = $this->getClientID();
+        $url = $this->buildApiUrl($endpoint, $parameters);
+
+        try {
+            return json_decode(getContents($url));
+        } catch (Exception $e) {
+            // Retry once with refreshed client ID
+            $parameters['client_id'] = $this->refreshClientID();
+            $url = $this->buildApiUrl($endpoint, $parameters);
+
+            return json_decode(getContents($url));
+        }
+    }
+
+    private function getTrackList($tracks)
+    {
+        $trackids = '';
+
+        foreach ($tracks as $track) {
+            $trackids .= $track->id . ',';
+        }
+
+        $apiItems = $this->getApi(
+            'tracks',
+            ['ids' => $trackids]
+        );
+
+        $list = '';
+        foreach ($apiItems as $track) {
+            $list .= <<<HTML
+				<li>{$track->user->username} — <a href="{$track->permalink_url}">{$track->title}</a></li>
+HTML;
+        }
+
+        $html = <<<HTML
+			<ul>{$list}</ul>
+HTML;
+
+        return $html;
+    }
 }

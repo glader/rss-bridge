@@ -1,123 +1,162 @@
 <?php
-class Arte7Bridge extends BridgeAbstract {
 
-	// const MAINTAINER = 'mitsukarenai';
-	const NAME = 'Arte +7';
-	const URI = 'https://www.arte.tv/';
-	const CACHE_TIMEOUT = 1800; // 30min
-	const DESCRIPTION = 'Returns newest videos from ARTE +7';
+class Arte7Bridge extends BridgeAbstract
+{
+    const NAME = 'Arte +7';
+    const URI = 'https://www.arte.tv/';
+    const CACHE_TIMEOUT = 1800; // 30min
+    const DESCRIPTION = 'Returns newest videos from ARTE +7';
 
-	const API_TOKEN = 'Nzc1Yjc1ZjJkYjk1NWFhN2I2MWEwMmRlMzAzNjI5NmU3NWU3ODg4ODJjOWMxNTMxYzEzZGRjYjg2ZGE4MmIwOA';
+    const API_TOKEN = 'Nzc1Yjc1ZjJkYjk1NWFhN2I2MWEwMmRlMzAzNjI5NmU3NWU3ODg4ODJjOWMxNTMxYzEzZGRjYjg2ZGE4MmIwOA';
 
-	const PARAMETERS = array(
-		'Catégorie (Français)' => array(
-			'catfr' => array(
-				'type' => 'list',
-				'name' => 'Catégorie',
-				'values' => array(
-					'Toutes les vidéos (français)' => null,
-					'Actu & société' => 'ACT',
-					'Séries & fiction' => 'SER',
-					'Cinéma' => 'CIN',
-					'Arts & spectacles classiques' => 'ARS',
-					'Culture pop' => 'CPO',
-					'Découverte' => 'DEC',
-					'Histoire' => 'HIST',
-					'Science' => 'SCI',
-					'Autre' => 'AUT'
-				)
-			)
-		),
-		'Collection (Français)' => array(
-			'colfr' => array(
-				'name' => 'Collection id',
-				'required' => true,
-				'title' => 'ex. RC-014095 pour https://www.arte.tv/fr/videos/RC-014095/blow-up/'
-			)
-		),
-		'Catégorie (Allemand)' => array(
-			'catde' => array(
-				'type' => 'list',
-				'name' => 'Catégorie',
-				'values' => array(
-					'Alle Videos (deutsch)' => null,
-					'Aktuelles & Gesellschaft' => 'ACT',
-					'Fernsehfilme & Serien' => 'SER',
-					'Kino' => 'CIN',
-					'Kunst & Kultur' => 'ARS',
-					'Popkultur & Alternativ' => 'CPO',
-					'Entdeckung' => 'DEC',
-					'Geschichte' => 'HIST',
-					'Wissenschaft' => 'SCI',
-					'Sonstiges' => 'AUT'
-				)
-			)
-		),
-		'Collection (Allemand)' => array(
-			'colde' => array(
-				'name' => 'Collection id',
-				'required' => true,
-				'title' => 'ex. RC-014095 pour https://www.arte.tv/de/videos/RC-014095/blow-up/'
-			)
-		)
-	);
+    const PARAMETERS = [
+        'global' => [
+            'sort_by' => [
+                'type' => 'list',
+                'name' => 'Sort by',
+                'required' => false,
+                'defaultValue' => null,
+                'values' => [
+                    'Default' => null,
+                    'Video rights start date' => 'videoRightsBegin',
+                    'Video rights end date' => 'videoRightsEnd',
+                    'Brodcast date' => 'broadcastBegin',
+                    'Creation date' => 'creationDate',
+                    'Last modified' => 'lastModified',
+                    'Number of views' => 'views',
+                    'Number of views per period' => 'viewsPeriod',
+                    'Available screens' => 'availableScreens',
+                    'Episode' => 'episode'
+                ],
+            ],
+            'sort_direction' => [
+                'type' => 'list',
+                'name' => 'Sort direction',
+                'required' => false,
+                'defaultValue' => 'DESC',
+                'values' => [
+                    'Ascending' => 'ASC',
+                    'Descending' => 'DESC'
+                ],
+            ],
+            'exclude_trailers' => [
+                'name' => 'Exclude trailers',
+                'type' => 'checkbox',
+                'required' => false,
+                'defaultValue' => false
+            ],
+        ],
+        'Category' => [
+            'lang' => [
+                'type' => 'list',
+                'name' => 'Language',
+                'values' => [
+                    'Français' => 'fr',
+                    'Deutsch' => 'de',
+                    'English' => 'en',
+                    'Español' => 'es',
+                    'Polski' => 'pl',
+                    'Italiano' => 'it'
+                ],
+            ],
+            'cat' => [
+                'type' => 'list',
+                'name' => 'Category',
+                'values' => [
+                    'All videos' => null,
+                    'News & society' => 'ACT',
+                    'Series & fiction' => 'SER',
+                    'Cinema' => 'CIN',
+                    'Culture' => 'ARS',
+                    'Culture pop' => 'CPO',
+                    'Discovery' => 'DEC',
+                    'History' => 'HIST',
+                    'Science' => 'SCI',
+                    'Other' => 'AUT'
+                ]
+            ],
+        ],
+        'Collection' => [
+            'lang' => [
+                'type' => 'list',
+                'name' => 'Language',
+                'values' => [
+                    'Français' => 'fr',
+                    'Deutsch' => 'de',
+                    'English' => 'en',
+                    'Español' => 'es',
+                    'Polski' => 'pl',
+                    'Italiano' => 'it'
+                ]
+            ],
+            'col' => [
+                'name' => 'Collection id',
+                'required' => true,
+                'title' => 'ex. RC-014095 pour https://www.arte.tv/de/videos/RC-014095/blow-up/',
+                'exampleValue'  => 'RC-014095'
+            ]
+        ]
+    ];
 
-	public function collectData(){
-		switch($this->queriedContext) {
-		case 'Catégorie (Français)':
-			$category = $this->getInput('catfr');
-			$lang = 'fr';
-			break;
-		case 'Collection (Français)':
-			$lang = 'fr';
-			$collectionId = $this->getInput('colfr');
-			break;
-		case 'Catégorie (Allemand)':
-			$category = $this->getInput('catde');
-			$lang = 'de';
-			break;
-		case 'Collection (Allemand)':
-			$lang = 'de';
-			$collectionId = $this->getInput('colde');
-			break;
-		}
+    public function collectData()
+    {
+        switch ($this->queriedContext) {
+            case 'Category':
+                $category = $this->getInput('cat');
+                $collectionId = null;
+                break;
+            case 'Collection':
+                $collectionId = $this->getInput('col');
+                $category = null;
+                break;
+        }
 
-		$url = 'https://api.arte.tv/api/opa/v3/videos?sort=-lastModified&limit=10&language='
-			. $lang
-			. ($category != null ? '&category.code=' . $category : '')
-			. ($collectionId != null ? '&collections.collectionId=' . $collectionId : '');
+        $lang = $this->getInput('lang');
+        $sort_by = $this->getInput('sort_by');
+        $sort_direction = $this->getInput('sort_direction') == 'ASC' ? '' : '-';
 
-		$header = array(
-			'Authorization: Bearer ' . self::API_TOKEN
-		);
+        $url = 'https://api.arte.tv/api/opa/v3/videos?limit=15&language='
+            . $lang
+            . ($sort_by != null ? '&sort=' . $sort_direction . $sort_by : '')
+            . ($category != null ? '&category.code=' . $category : '')
+            . ($collectionId != null ? '&collections.collectionId=' . $collectionId : '');
 
-		$input = getContents($url, $header)
-			or returnServerError('Could not request ARTE.');
-		$input_json = json_decode($input, true);
+        $header = [
+            'Authorization: Bearer ' . self::API_TOKEN
+        ];
 
-		foreach($input_json['videos'] as $element) {
+        $input = getContents($url, $header);
+        $input_json = json_decode($input, true);
 
-			$item = array();
-			$item['uri'] = $element['url'];
-			$item['id'] = $element['id'];
+        foreach ($input_json['videos'] as $element) {
+            if ($this->getInput('exclude_trailers') && $element['platform'] == 'EXTRAIT') {
+                continue;
+            }
 
-			$item['timestamp'] = strtotime($element['videoRightsBegin']);
-			$item['title'] = $element['title'];
+            $durationSeconds = $element['durationSeconds'];
 
-			if(!empty($element['subtitle']))
-				$item['title'] = $element['title'] . ' | ' . $element['subtitle'];
+            $item = [];
+            $item['uri'] = $element['url'];
+            $item['id'] = $element['id'];
 
-			$item['duration'] = round((int)$element['durationSeconds'] / 60);
-			$item['content'] = $element['teaserText']
-			. '<br><br>'
-			. $item['duration']
-			. 'min<br><a href="'
-			. $item['uri']
-			. '"><img src="'
-			. $element['mainImage']['url']
-			. '" /></a>';
+            $item['timestamp'] = strtotime($element['videoRightsBegin']);
+            $item['title'] = $element['title'];
 
-			$this->items[] = $item;
-		}
-	}
+            if (!empty($element['subtitle'])) {
+                $item['title'] = $element['title'] . ' | ' . $element['subtitle'];
+            }
+
+            $durationMinutes = round((int)$durationSeconds / 60);
+            $item['content'] = $element['teaserText']
+            . '<br><br>'
+            . $durationMinutes
+            . 'min<br><a href="'
+            . $item['uri']
+            . '"><img src="'
+            . $element['mainImage']['url']
+            . '" /></a>';
+
+            $this->items[] = $item;
+        }
+    }
 }
